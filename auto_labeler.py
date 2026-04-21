@@ -49,8 +49,16 @@ DEFAULT_CONFIG: Dict[str, float] = {
     "fps": 30.0,
     "min_segment_duration": 0.25,
     "bridge_threshold": 0.5,
+    # Any segment shorter than this (seconds) is absorbed into whichever
+    # neighbor is longer, regardless of label. Stricter than bridging
+    # because it merges even when neighbors disagree.
+    "short_absorb_threshold": 0.5,
     "still_xy": 0.003,
-    "walk_xy": 0.012,
+    # Raised from the previous calibrated ~0.00125 so "slight xy drift"
+    # while turning is no longer misclassified as Walk. With a higher
+    # `walk_xy`, rule 2 (Turn) captures frames with low planar velocity
+    # but noticeable yaw rotation.
+    "walk_xy": 0.003,
     "rear_z_abs": 0.07,
     "rear_z_delta": 0.03,
     "orient_yaw": 0.015,
@@ -306,6 +314,53 @@ def _group_segments(
             final[-1] = (pl, ps, e)
         else:
             final.append((lbl, s, e))
+
+    # Pass 3: absorb short segments (regardless of label match) into their
+    # longer neighbor. Repeats until no segment under the threshold remains
+    # or only one segment is left.
+    short_thresh = float(cfg.get("short_absorb_threshold", 0.5))
+    while True:
+        shortest_idx = -1
+        shortest_dur = float("inf")
+        for i, (_, s, e) in enumerate(final):
+            d = (e - s) / fps
+            if d < short_thresh and d < shortest_dur:
+                shortest_dur = d
+                shortest_idx = i
+        if shortest_idx < 0 or len(final) <= 1:
+            break
+
+        i = shortest_idx
+        _, s, e = final[i]
+        left_len = (
+            (final[i - 1][2] - final[i - 1][1]) if i > 0 else -1
+        )
+        right_len = (
+            (final[i + 1][2] - final[i + 1][1])
+            if i + 1 < len(final)
+            else -1
+        )
+
+        if left_len < 0 and right_len < 0:
+            break
+
+        if right_len > left_len:
+            lbl, rs, re_ = final[i + 1]
+            final[i + 1] = (lbl, s, re_)
+            final.pop(i)
+        else:
+            lbl, ls, _ = final[i - 1]
+            final[i - 1] = (lbl, ls, e)
+            final.pop(i)
+
+        coalesced: List[Tuple[str, int, int]] = []
+        for seg in final:
+            if coalesced and coalesced[-1][0] == seg[0] and coalesced[-1][2] == seg[1]:
+                lbl, ps, _ = coalesced[-1]
+                coalesced[-1] = (lbl, ps, seg[2])
+            else:
+                coalesced.append(seg)
+        final = coalesced
 
     return final
 

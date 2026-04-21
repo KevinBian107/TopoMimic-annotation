@@ -434,14 +434,33 @@ class TimelineWidget(QWidget):
                     if seg.end_time is not None
                     else (self.current_time / self.duration) * w
                 )
+                seg_w = int(x_end - x_start)
                 painter.fillRect(
-                    QRect(int(x_start), strip_top, int(x_end - x_start), strip_h),
+                    QRect(int(x_start), strip_top, seg_w, strip_h),
                     seg.color,
                 )
+                # Draw the direction label inside the segment if it fits.
+                label = seg.name
+                # Use dark text on light fills for legibility.
+                painter.setPen(QColor(THEME["text"]))
+                fm = painter.fontMetrics()
+                text_w = fm.horizontalAdvance(label)
+                if seg_w >= text_w + 6:
+                    painter.drawText(
+                        int(x_start) + 4,
+                        strip_top + strip_h - 6,
+                        label,
+                    )
+                elif seg_w >= fm.horizontalAdvance(label[0]) + 4:
+                    painter.drawText(
+                        int(x_start) + 2,
+                        strip_top + strip_h - 6,
+                        label[0],
+                    )
         painter.setPen(divider_color)
         painter.drawRect(0, strip_top, w - 1, strip_h)
         painter.setPen(text_muted)
-        painter.drawText(8, strip_top + strip_h - 6, "direction")
+        painter.drawText(w - 72, strip_top + strip_h - 6, "direction")
 
         origin = self.behaviors_origin_y
         for idx, behavior in enumerate(self.behavior_types):
@@ -915,6 +934,15 @@ class AnnotatorGUI(QMainWindow):
         redo_sc = QShortcut(QKeySequence.Redo, self)
         redo_sc.setContext(Qt.ApplicationShortcut)
         redo_sc.activated.connect(self.redo)
+
+        # Auto-pipeline shortcuts (Ctrl/Cmd-L = auto-label, Ctrl/Cmd-D = auto-direction)
+        label_sc = QShortcut(QKeySequence("Ctrl+L"), self)
+        label_sc.setContext(Qt.ApplicationShortcut)
+        label_sc.activated.connect(self.auto_label_current)
+
+        dir_sc = QShortcut(QKeySequence("Ctrl+D"), self)
+        dir_sc.setContext(Qt.ApplicationShortcut)
+        dir_sc.activated.connect(self.auto_direction_current)
 
 
     def update_behavior_table(self) -> None:

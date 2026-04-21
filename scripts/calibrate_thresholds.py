@@ -187,15 +187,20 @@ def pick_thresholds(
     def p90(cls: str, feat: str) -> float:
         return _percentile(per_class.get(cls, {}).get(feat, []), 0.90)
 
-    # walk_xy: midpoint between Walk p10 and max of others' p90
-    walk_p10 = p10("Walk", "v_xy")
+    # walk_xy: midpoint between Walk MEDIAN and max of others' p90.
+    # Using median (not p10) makes Walk detection stricter — frames with
+    # slight planar drift while turning no longer get labeled Walk.
+    walk_p50 = p50("Walk", "v_xy")
     still_p90 = max(
         p90("Immobile", "v_xy"),
         p90("Groom", "v_xy"),
         p90("Rear", "v_xy"),
     )
-    if walk_p10 > 0 and still_p90 > 0:
-        cfg["walk_xy"] = (walk_p10 + still_p90) / 2
+    if walk_p50 > 0 and still_p90 > 0:
+        cfg["walk_xy"] = (walk_p50 + still_p90) / 2
+    # Floor to the default so auto-recalibration never drops below the
+    # hand-tuned stricter threshold.
+    cfg["walk_xy"] = max(cfg["walk_xy"], DEFAULT_CONFIG["walk_xy"])
 
     still_xy_p90 = p90("Immobile", "v_xy")
     if still_xy_p90 > 0:

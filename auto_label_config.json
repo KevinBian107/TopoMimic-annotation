@@ -11,8 +11,9 @@
   "orient_yaw": 0.015,
   "rear_z_abs": 0.02293933,
   "rear_z_delta": 0.03,
+  "short_absorb_threshold": 0.5,
   "still_hindlimb": 0.0004023083709150494,
   "still_xy": 0.0009738856669548827,
-  "walk_xy": 0.0012522677403774315,
+  "walk_xy": 0.003,
   "window": 15
 }
