@@ -3000,8 +3000,8 @@ def _build_app_icon() -> QIcon:
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing, True)
 
-        # Rounded card background
-        card = QColor(THEME.get("accent", "#2563eb"))
+        # Rounded card background (black)
+        card = QColor("#0b0d12")
         p.setBrush(QBrush(card))
         p.setPen(Qt.NoPen)
         pad = size // 10
