@@ -31,7 +31,7 @@ from auto_labeler import (
     resolve_qpos_path,  # noqa: F401  (re-exported for symmetry)
 )
 
-DIR_MIN_DURATION = 1.0  # seconds — "hold for longer"
+DIR_MIN_DURATION = 1.5  # seconds — "hold for longer"
 
 
 def _signed_yaw_rate(yaw_unwrapped: List[float], window: int) -> List[float]:

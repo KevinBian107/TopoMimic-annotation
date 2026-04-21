@@ -74,8 +74,12 @@ DEFAULT_CONFIG: Dict[str, float] = {
     "hindlimb_last": 73,
     # Direction threshold lives here for convenience of the calibrator but is
     # consumed by auto_direction.py; keeping the key stable avoids splitting
-    # config files.
-    "dir_yaw_thresh": 0.015,
+    # config files. Raised to require a clearly committed yaw rate before a
+    # frame is called Left or Right — slow drifting yaw stays Straight.
+    "dir_yaw_thresh": 0.03,
+    # Minimum direction-segment duration (seconds). Short Left/Right spans
+    # get absorbed into the surrounding Straight unless they're decisive.
+    "dir_min_duration": 1.5,
 }
 
 

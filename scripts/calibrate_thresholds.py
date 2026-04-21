@@ -291,6 +291,9 @@ def pick_thresholds(
         else:
             in_p50 = _percentile(dir_in, 0.50)
             cfg["dir_yaw_thresh"] = max(out_p90 * 1.1, in_p50 * 0.3)
+    # Floor: never drop below the hand-tuned default. Stricter direction
+    # calibration is preferred — slow yaw drift stays Straight.
+    cfg["dir_yaw_thresh"] = max(cfg["dir_yaw_thresh"], DEFAULT_CONFIG["dir_yaw_thresh"])
 
     return cfg
 

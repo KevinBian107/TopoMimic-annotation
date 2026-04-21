@@ -42,10 +42,12 @@ from PyQt5.QtGui import (
     QPainter,
     QColor,
     QPen,
+    QBrush,
     QKeySequence,
     QPaintEvent,
     QMouseEvent,
     QKeyEvent,
+    QIcon,
 )
 
 
@@ -2986,9 +2988,72 @@ class AnnotatorGUI(QMainWindow):
         self.update_behavior_list()
 
 
+def _build_app_icon() -> QIcon:
+    """Procedurally render a multi-size app icon so macOS doesn't show the
+    generic document icon. Style mirrors the timeline: a thin direction
+    strip over stacked behavior rows on a rounded card.
+    """
+    icon = QIcon()
+    for size in (32, 64, 128, 256, 512):
+        pm = QPixmap(size, size)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing, True)
+
+        # Rounded card background
+        card = QColor(THEME.get("accent", "#2563eb"))
+        p.setBrush(QBrush(card))
+        p.setPen(Qt.NoPen)
+        pad = size // 10
+        r = size - 2 * pad
+        p.drawRoundedRect(pad, pad, r, r, r // 5, r // 5)
+
+        # Direction strip (top)
+        strip_h = max(3, r // 10)
+        strip_y = pad + r // 6
+        inner_pad = r // 8
+        bar_w = r - 2 * inner_pad
+        third = bar_w // 3
+        p.setBrush(QBrush(QColor("#ffffff")))
+        p.drawRect(pad + inner_pad, strip_y, third, strip_h)
+        p.setBrush(QBrush(QColor("#f97316")))
+        p.drawRect(pad + inner_pad + third, strip_y, third, strip_h)
+        p.setBrush(QBrush(QColor("#ffffff")))
+        p.drawRect(pad + inner_pad + 2 * third, strip_y, bar_w - 2 * third, strip_h)
+
+        # Three behavior rows
+        row_h = max(3, r // 10)
+        gap = max(1, r // 40)
+        y = strip_y + strip_h + row_h
+        bars = [
+            (QColor("#f59e0b"), 0.10, 0.55),
+            (QColor("#ef4444"), 0.35, 0.90),
+            (QColor("#22c55e"), 0.05, 0.45),
+        ]
+        for color, start, end in bars:
+            x0 = pad + inner_pad + int(start * bar_w)
+            x1 = pad + inner_pad + int(end * bar_w)
+            p.setBrush(QBrush(color))
+            p.drawRect(x0, y, max(2, x1 - x0), row_h)
+            y += row_h + gap
+
+        # Playhead line
+        p.setPen(QPen(QColor("#ffffff"), max(1, size // 96)))
+        ph_x = pad + inner_pad + int(0.62 * bar_w)
+        p.drawLine(ph_x, strip_y, ph_x, y - gap)
+
+        p.end()
+        icon.addPixmap(pm)
+    return icon
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     apply_theme(app)
+    app.setApplicationName("TopoMimic Annotation")
+    icon = _build_app_icon()
+    app.setWindowIcon(icon)
     window = AnnotatorGUI()
+    window.setWindowIcon(icon)
     window.show()
     sys.exit(app.exec_())
