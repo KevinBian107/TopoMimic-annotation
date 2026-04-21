@@ -2437,6 +2437,18 @@ class AnnotatorGUI(QMainWindow):
             return None
         return resolve_qpos_path(video_name, qpos_dir)
 
+    def _resolve_qpos_pair_for_video(
+        self, video_name: str
+    ) -> Tuple[Optional[str], Optional[str]]:
+        try:
+            from auto_labeler import resolve_qpos_pair
+        except ImportError:
+            return None, None
+        qpos_dir = getattr(self, "_qpos_dir", None)
+        if not qpos_dir:
+            return None, None
+        return resolve_qpos_pair(video_name, qpos_dir)
+
     def _build_auto_segments(
         self, video_name: str
     ) -> Optional[List[BehaviorSegment]]:
@@ -2446,11 +2458,11 @@ class AnnotatorGUI(QMainWindow):
         """
         from auto_labeler import auto_label_clip
 
-        qpath = self._resolve_qpos_for_video(video_name)
-        if not qpath:
+        track_path, stac_path = self._resolve_qpos_pair_for_video(video_name)
+        if not track_path:
             return None
         try:
-            segs_raw = auto_label_clip(qpath)
+            segs_raw = auto_label_clip(track_path, stac_path=stac_path)
         except Exception as e:
             QMessageBox.warning(
                 self, "Auto-label error", f"Failed to auto-label {video_name}:\n{e}"
@@ -2549,11 +2561,21 @@ class AnnotatorGUI(QMainWindow):
     ) -> Optional[List[BehaviorSegment]]:
         from auto_direction import auto_direction_clip
 
-        qpath = self._resolve_qpos_for_video(video_name)
-        if not qpath:
+        track_path, stac_path = self._resolve_qpos_pair_for_video(video_name)
+        if not track_path:
             return None
+        # If Turn segments already exist on the behavior track, force the
+        # direction inside each Turn to Left/Right (never Straight).
+        turn_spans: List[Tuple[int, int]] = []
+        for seg in self.videos.get(video_name, {}).get("segments", []) or []:
+            if seg.name == "Turn" and seg.start_frame is not None and seg.end_frame is not None:
+                turn_spans.append((int(seg.start_frame), int(seg.end_frame)))
         try:
-            raw = auto_direction_clip(qpath)
+            raw = auto_direction_clip(
+                track_path,
+                stac_path=stac_path,
+                turn_frame_spans=turn_spans or None,
+            )
         except Exception as e:
             QMessageBox.warning(
                 self, "Auto-directionality error", f"Failed on {video_name}:\n{e}"
@@ -2860,7 +2882,7 @@ class AnnotatorGUI(QMainWindow):
         progress.setMinimumDuration(0)
         progress.setValue(0)
 
-        from auto_labeler import auto_label_clip, resolve_qpos_path
+        from auto_labeler import auto_label_clip, resolve_qpos_pair
         from auto_direction import auto_direction_clip
 
         labeled = 0
@@ -2871,15 +2893,24 @@ class AnnotatorGUI(QMainWindow):
             progress.setLabelText(f"Processing {name} ({i + 1}/{len(targets)})")
             QApplication.processEvents()
 
-            qpath = resolve_qpos_path(name, self._qpos_dir)
-            if not qpath:
+            track_path, stac_path = resolve_qpos_pair(name, self._qpos_dir)
+            if not track_path:
                 continue
 
             self._ensure_video_metadata(name)
 
             try:
-                raw_beh = auto_label_clip(qpath)
-                raw_dir = auto_direction_clip(qpath)
+                raw_beh = auto_label_clip(track_path, stac_path=stac_path)
+                turn_spans = [
+                    (int(s["start_frame"]), int(s["end_frame"]))
+                    for s in raw_beh
+                    if s["name"] == "Turn"
+                ]
+                raw_dir = auto_direction_clip(
+                    track_path,
+                    stac_path=stac_path,
+                    turn_frame_spans=turn_spans or None,
+                )
             except Exception:
                 continue
 

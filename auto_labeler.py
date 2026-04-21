@@ -421,9 +421,14 @@ def _group_segments(
 
 
 def auto_label_clip(
-    qpos_path: str, cfg: Optional[Dict[str, float]] = None
+    qpos_path: str,
+    cfg: Optional[Dict[str, float]] = None,
+    stac_path: Optional[str] = None,
 ) -> List[Dict[str, object]]:
     """Label a single clip given its qpos CSV path.
+
+    Track is the primary signal. If `stac_path` is provided, stac features
+    are blended in with a smaller weight (0.3 by default) as a helper.
 
     Returns a list of dicts: {name, start_time, end_time, start_frame, end_frame}.
     Suitable for constructing BehaviorSegment in the GUI.
@@ -432,6 +437,11 @@ def auto_label_clip(
         cfg = load_config()
     rows = read_qpos(qpos_path)
     feats = compute_features(rows, cfg)
+    if stac_path:
+        stac_rows = read_qpos(stac_path)
+        if stac_rows:
+            stac_feats = compute_features(stac_rows, cfg)
+            feats = _blend_features(feats, stac_feats, weight_primary=0.7)
     labels = [_classify_frame(f, cfg) for f in feats]
     groups = _group_segments(labels, cfg)
     fps = float(cfg["fps"])
@@ -451,12 +461,53 @@ def auto_label_clip(
 
 
 def resolve_qpos_path(clip_name: str, csvs_dir: str) -> Optional[str]:
-    """Find the qpos CSV for a clip. Prefers track over stac."""
+    """Find the best qpos CSV for a clip. Prefers track over stac."""
+    primary, _ = resolve_qpos_pair(clip_name, csvs_dir)
+    return primary
+
+
+def resolve_qpos_pair(
+    clip_name: str, csvs_dir: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """Return (track_path, stac_path), either may be None if not on disk.
+
+    Track is the primary source for classification; stac is a helper used
+    to blend features and stabilize noisy tracking.
+    """
     stem = os.path.splitext(os.path.basename(clip_name))[0]
     track = os.path.join(csvs_dir, f"{stem}_track_qpos.csv")
     stac = os.path.join(csvs_dir, f"{stem}_stac_qpos.csv")
-    if os.path.isfile(track):
-        return track
-    if os.path.isfile(stac):
-        return stac
-    return None
+    track_p = track if os.path.isfile(track) else None
+    stac_p = stac if os.path.isfile(stac) else None
+    return track_p, stac_p
+
+
+def _blend_features(
+    primary: List[Dict[str, float]],
+    secondary: List[Dict[str, float]],
+    weight_primary: float = 0.7,
+) -> List[Dict[str, float]]:
+    """Per-frame weighted blend of scalar features.
+
+    `yaw` is kept from the primary track (quaternion-derived angles should
+    not be linearly blended). Everything else is linearly combined.
+    """
+    n = min(len(primary), len(secondary))
+    out: List[Dict[str, float]] = []
+    w_p = float(weight_primary)
+    w_s = 1.0 - w_p
+    for i in range(n):
+        p = primary[i]
+        s = secondary[i]
+        blended: Dict[str, float] = {}
+        for k, v in p.items():
+            if k == "yaw":
+                blended[k] = v
+            elif k in s and isinstance(v, (int, float)):
+                blended[k] = w_p * v + w_s * s[k]
+            else:
+                blended[k] = v
+        out.append(blended)
+    for i in range(n, len(primary)):
+        out.append(primary[i])
+    return out

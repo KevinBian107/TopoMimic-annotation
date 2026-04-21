@@ -29,6 +29,7 @@ from auto_labeler import (
     load_config,
     read_qpos,
     resolve_qpos_path,  # noqa: F401  (re-exported for symmetry)
+    resolve_qpos_pair,  # noqa: F401
 )
 
 DIR_MIN_DURATION = 1.5  # seconds — "hold for longer"
@@ -138,13 +139,97 @@ def _group_and_smooth(
     return segs
 
 
+def reconcile_direction_with_turns(
+    direction_segs: List[Dict[str, object]],
+    turn_frame_spans: List[Tuple[int, int]],
+    qpos_rows: List[List[float]],
+    cfg: Optional[Dict[str, float]] = None,
+) -> List[Dict[str, object]]:
+    """Force every Turn span to be Left or Right (never Straight).
+
+    A Turn behavior means rotation definitely happened — the direction
+    track must reflect that. Net yaw sign over the Turn span decides
+    Left (positive) vs Right (negative).
+    """
+    if not turn_frame_spans or not qpos_rows:
+        return direction_segs
+    if cfg is None:
+        cfg = load_config()
+    fps = float(cfg.get("fps", 30.0))
+
+    total = len(qpos_rows)
+    raw_yaw = [_quat_to_yaw(r[3], r[4], r[5], r[6]) for r in qpos_rows]
+    yaw = _unwrap(raw_yaw)
+
+    # Rebuild a frame-level label array from the existing direction segments,
+    # then overlay Turn spans with their dominant direction.
+    labels = ["Straight"] * total
+    for seg in direction_segs:
+        fs_raw = seg.get("start_frame")
+        fe_raw = seg.get("end_frame")
+        fs = int(fs_raw) if fs_raw is not None else 0
+        fe = int(fe_raw) if fe_raw is not None else total
+        name = str(seg.get("name", "Straight"))
+        for i in range(max(0, fs), min(total, fe)):
+            labels[i] = name
+
+    for fs, fe in turn_frame_spans:
+        fs_i = max(0, int(fs))
+        fe_i = min(total, int(fe))
+        if fe_i <= fs_i:
+            continue
+        net = yaw[fe_i - 1] - yaw[fs_i]
+        override = "Left" if net > 0 else ("Right" if net < 0 else "Left")
+        for i in range(fs_i, fe_i):
+            labels[i] = override
+
+    if total == 0:
+        return []
+    out: List[Dict[str, object]] = []
+    cur = labels[0]
+    cur_start = 0
+    for i in range(1, total):
+        if labels[i] != cur:
+            out.append(
+                {
+                    "name": cur,
+                    "start_time": cur_start / fps,
+                    "end_time": i / fps,
+                    "start_frame": cur_start,
+                    "end_frame": i,
+                }
+            )
+            cur = labels[i]
+            cur_start = i
+    out.append(
+        {
+            "name": cur,
+            "start_time": cur_start / fps,
+            "end_time": total / fps,
+            "start_frame": cur_start,
+            "end_frame": total,
+        }
+    )
+    return out
+
+
 def auto_direction_clip(
-    qpos_path: str, cfg: Optional[Dict[str, float]] = None
+    qpos_path: str,
+    cfg: Optional[Dict[str, float]] = None,
+    stac_path: Optional[str] = None,
+    turn_frame_spans: Optional[List[Tuple[int, int]]] = None,
 ) -> List[Dict[str, object]]:
     """Infer direction-track segments for a clip.
 
-    Returns a list of {name, start_time, end_time, start_frame, end_frame}
-    covering every frame of the clip.
+    Track qpos is primary. `stac_path` (if provided) smooths the yaw
+    signal by weighted-averaging with the track's signed yaw-rate; the
+    final yaw angle used for Turn-reconciliation still comes from track.
+
+    If `turn_frame_spans` is provided, every Turn frame is forced to Left
+    or Right via `reconcile_direction_with_turns` — a Turn is never
+    allowed to read Straight.
+
+    Returns a list of {name, start_time, end_time, start_frame, end_frame}.
     """
     if cfg is None:
         cfg = load_config()
@@ -160,6 +245,17 @@ def auto_direction_clip(
     yaw_unwrapped = _unwrap(raw_yaw)
     signed_rate = _signed_yaw_rate(yaw_unwrapped, window)
 
+    if stac_path:
+        stac_rows = read_qpos(stac_path)
+        if stac_rows:
+            stac_yaw = _unwrap(
+                [_quat_to_yaw(r[3], r[4], r[5], r[6]) for r in stac_rows]
+            )
+            stac_rate = _signed_yaw_rate(stac_yaw, window)
+            n = min(len(signed_rate), len(stac_rate))
+            for i in range(n):
+                signed_rate[i] = 0.7 * signed_rate[i] + 0.3 * stac_rate[i]
+
     labels = [_classify_frame(r, thresh) for r in signed_rate]
     groups = _group_and_smooth(labels, signed_rate, cfg)
 
@@ -174,4 +270,8 @@ def auto_direction_clip(
                 "end_frame": e,
             }
         )
+
+    if turn_frame_spans:
+        out = reconcile_direction_with_turns(out, turn_frame_spans, rows, cfg)
+
     return out
