@@ -54,11 +54,15 @@ DEFAULT_CONFIG: Dict[str, float] = {
     # because it merges even when neighbors disagree.
     "short_absorb_threshold": 0.5,
     "still_xy": 0.003,
-    # Raised from the previous calibrated ~0.00125 so "slight xy drift"
-    # while turning is no longer misclassified as Walk. With a higher
-    # `walk_xy`, rule 2 (Turn) captures frames with low planar velocity
-    # but noticeable yaw rotation.
-    "walk_xy": 0.003,
+    # Walking requires noticeable planar velocity. Raised further (was
+    # 0.003) so that clear, sustained translation is needed — anything
+    # below becomes Turn (if rotating) or Immobile (if not).
+    "walk_xy": 0.005,
+    # Immobile is the default fall-through — but a stricter standard means
+    # a frame-by-frame lull is not enough; the still spell must last a
+    # minimum duration to qualify. Shorter Immobile segments are absorbed
+    # into whichever neighbor is longer.
+    "immobile_min_duration": 1.0,
     "rear_z_abs": 0.07,
     "rear_z_delta": 0.03,
     "orient_yaw": 0.015,
@@ -346,6 +350,53 @@ def _group_segments(
 
         if right_len > left_len:
             lbl, rs, re_ = final[i + 1]
+            final[i + 1] = (lbl, s, re_)
+            final.pop(i)
+        else:
+            lbl, ls, _ = final[i - 1]
+            final[i - 1] = (lbl, ls, e)
+            final.pop(i)
+
+        coalesced: List[Tuple[str, int, int]] = []
+        for seg in final:
+            if coalesced and coalesced[-1][0] == seg[0] and coalesced[-1][2] == seg[1]:
+                lbl, ps, _ = coalesced[-1]
+                coalesced[-1] = (lbl, ps, seg[2])
+            else:
+                coalesced.append(seg)
+        final = coalesced
+
+    # Pass 4: stricter Immobile. An Immobile segment shorter than
+    # `immobile_min_duration` gets folded into its longer neighbor — the
+    # user wants the animal to be actually still for at least that long
+    # before we call it Immobile.
+    immob_min = float(cfg.get("immobile_min_duration", 1.0))
+    while True:
+        shortest_idx = -1
+        shortest_dur = float("inf")
+        for i, (lbl, s, e) in enumerate(final):
+            if lbl != "Immobile":
+                continue
+            d = (e - s) / fps
+            if d < immob_min and d < shortest_dur:
+                shortest_dur = d
+                shortest_idx = i
+        if shortest_idx < 0 or len(final) <= 1:
+            break
+
+        i = shortest_idx
+        _, s, e = final[i]
+        left_len = (final[i - 1][2] - final[i - 1][1]) if i > 0 else -1
+        right_len = (
+            (final[i + 1][2] - final[i + 1][1])
+            if i + 1 < len(final)
+            else -1
+        )
+        if left_len < 0 and right_len < 0:
+            break
+
+        if right_len > left_len:
+            lbl, _rs, re_ = final[i + 1]
             final[i + 1] = (lbl, s, re_)
             final.pop(i)
         else:
