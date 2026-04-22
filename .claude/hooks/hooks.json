@@ -1,0 +1,24 @@
+{
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "command": "bash hooks/session-start.sh",
+      "description": "Inject Propel context on session start and resume"
+    },
+    {
+      "event": "PreCompact",
+      "command": "bash hooks/session-start.sh",
+      "description": "Re-inject Propel context before compaction"
+    },
+    {
+      "event": "SessionStart",
+      "command": "bash hooks/working-memory.sh",
+      "description": "Inject prior experiments and architecture designs so new proposals don't duplicate past work"
+    },
+    {
+      "event": "PreCompact",
+      "command": "bash hooks/working-memory.sh",
+      "description": "Re-inject working memory before compaction"
+    }
+  ]
+}
