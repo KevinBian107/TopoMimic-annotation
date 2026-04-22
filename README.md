@@ -17,7 +17,7 @@ A PyQt5 desktop GUI for frame-accurate annotation of rodent behavior videos. For
 - **Snapshot undo/redo** (`Ctrl/Cmd-Z`, `Ctrl/Cmd-Shift-Z`), `Ctrl/Cmd-L` = auto-label clip, `Ctrl/Cmd-D` = auto-direction clip.
 - **Drag-to-translate** and **drag-up/down to change behavior** on any segment.
 
-![GUI demo](figures/demo.png)
+![GUI demo](figures/demo1.png)
 
 ## Install
 
