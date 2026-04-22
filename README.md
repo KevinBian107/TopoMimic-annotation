@@ -1,5 +1,9 @@
 # TopoMimic-annotation
 
+<p align="center">
+  <img src="figures/logo.png" alt="TopoMimic-annotation logo" width="160">
+</p>
+
 > Based on the original annotation GUI by Eric Leonardis: https://github.com/ericleonardis/annotation-gui
 >
 > This fork extends the GUI with a two-track macro-behavior + turn-direction model, qpos-driven auto-labeling, and integration with the TopoMimic / topo-vnl research workflow.
@@ -9,9 +13,11 @@ A PyQt5 desktop GUI for frame-accurate annotation of rodent behavior videos. For
 - **Five macro behaviors**: `Immobile, Rear, Turn, Walk, Groom` with hotkeys `I R T W G`.
 - **Independent direction track** (`Left / Right / Straight`) above the behavior rows.
 - **Auto-labeling** of the behavior track from per-clip qpos (`clip_{i}_{track,stac}_qpos.csv`).
-- **Auto-directionality** of the direction track from the same qpos.
-- **Snapshot undo/redo** (`Ctrl/Cmd-Z`, `Ctrl/Cmd-Shift-Z`).
+- **Auto-directionality** of the direction track from the same qpos (Turns always commit to Left or Right).
+- **Snapshot undo/redo** (`Ctrl/Cmd-Z`, `Ctrl/Cmd-Shift-Z`), `Ctrl/Cmd-L` = auto-label clip, `Ctrl/Cmd-D` = auto-direction clip.
 - **Drag-to-translate** and **drag-up/down to change behavior** on any segment.
+
+![GUI demo](figures/demo.png)
 
 ## Install
 
